@@ -12,6 +12,59 @@ mpl.rcParams['text.latex.preamble'] = [
     r'\usepackage{amssymb}',
     r'\usepackage{slashed}',]
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+import sys
+
+# Taken from https://stackoverflow.com/questions/7404116/defining-the-midpoint-of-a-colormap-in-matplotlib
+def shiftedColorMap(cmap, start=0, midpoint=0.5, stop=1.0, name='shiftedcmap'):
+    '''
+    Function to offset the "center" of a colormap. Useful for
+    data with a negative min and positive max and you want the
+    middle of the colormap's dynamic range to be at zero.
+
+    Input
+    -----
+      cmap : The matplotlib colormap to be altered
+      start : Offset from lowest point in the colormap's range.
+          Defaults to 0.0 (no lower offset). Should be between
+          0.0 and `midpoint`.
+      midpoint : The new center of the colormap. Defaults to
+          0.5 (no shift). Should be between 0.0 and 1.0. In
+          general, this should be  1 - vmax / (vmax + abs(vmin))
+          For example if your data range from -15.0 to +5.0 and
+          you want the center of the colormap at 0.0, `midpoint`
+          should be set to  1 - 5/(5 + 15)) or 0.75
+      stop : Offset from highest point in the colormap's range.
+          Defaults to 1.0 (no upper offset). Should be between
+          `midpoint` and 1.0.
+    '''
+    cdict = {
+        'red': [],
+        'green': [],
+        'blue': [],
+        'alpha': []
+    }
+
+    # regular index to compute the colors
+    reg_index = np.linspace(start, stop, 257)
+
+    # shifted index to match the data
+    shift_index = np.hstack([
+        np.linspace(0.0, midpoint, 128, endpoint=False),
+        np.linspace(midpoint, 1.0, 129, endpoint=True)
+    ])
+
+    for ri, si in zip(reg_index, shift_index):
+        r, g, b, a = cmap(ri)
+
+        cdict['red'].append((si, r, r))
+        cdict['green'].append((si, g, g))
+        cdict['blue'].append((si, b, b))
+        cdict['alpha'].append((si, a, a))
+
+    newcmap = mpl.colors.LinearSegmentedColormap(name, cdict)
+    plt.register_cmap(cmap=newcmap)
+
+    return newcmap
 
 def create_fig_and_ax(figsize = None):
     print("Creating figure and axes")
@@ -25,22 +78,27 @@ def plot_line_datasets(fig, ax, datasets, alpha = 1, linewidth = 1, linestyle = 
     for idata in datasets:
         plot_line(fig, ax, idata[0], idata[1], alpha = alpha, linewidth = linewidth, linestyle = linestyle)
 
-def plot_line(fig, ax, x = None, y = None, alpha = 1, linewidth = 1, linestyle = 'solid'):
-    if ((x == None) and (y != None)):
-        ax.plot(y, alpha = alpha, linewidth = linewidth, linestyle = linestyle)
+def plot_line(fig, ax, x = None, y = [], alpha = 1, linewidth = 1, linestyle = 'solid', rasterized = False):
+    if (x == None):
+        plot = ax.plot(y, alpha = alpha, linewidth = linewidth, linestyle = linestyle, rasterized = rasterized)
     else:
-        ax.plot(x, y, alpha = alpha, linewidth = linewidth, linestyle = linestyle)
+        plot = ax.plot(x, y, alpha = alpha, linewidth = linewidth, linestyle = linestyle, rasterized = rasterized)
+    return plot
 
-def plot_scatter(fig, ax, x, y, colors, color_range = "dynamic", marker='s', marker_size = 0.1, rasterized = False, alpha = 1., cmap = None, cbar_flag = False, plot_lims = None, cbar_label = ""):
+def plot_axhline(fig, ax,  y = 1, linestyle = "dashed", linewidth = 1, alpha = 0.8, color = "gray"):
+    line = ax.axhline(y = 1, linestyle = linestyle, linewidth = linewidth, alpha = alpha, color = color)
+    return line
+
+def plot_scatter(fig, ax, x, y, colors, color_range = "dynamic", marker='s', marker_size = 0.1, rasterized = False, alpha = 1., cmap = None, norm = None, cbar_flag = False, plot_lims = None, cbar_label = ""):
     print("Plot scatterplot")
     if cmap == None:
         cmap_obj = mpl.cm.get_cmap("viridis")
     else:
         cmap_obj = mpl.cm.get_cmap(cmap)
     if (color_range == "dynamic"):
-        scatterplot = ax.scatter(x ,y ,c=colors, s=marker_size, marker=marker, rasterized = rasterized, alpha = alpha, cmap = cmap_obj)
+        scatterplot = ax.scatter(x ,y ,c=colors, s=marker_size, marker=marker, rasterized = rasterized, alpha = alpha, cmap = cmap_obj, norm = norm)
     else:
-        scatterplot = ax.scatter(x ,y ,c=colors, s=marker_size, marker=marker, vmin = color_range[0], vmax = color_range[1], rasterized = rasterized, alpha = alpha, cmap = cmap_obj)
+        scatterplot = ax.scatter(x ,y ,c=colors, s=marker_size, marker=marker, vmin = color_range[0], vmax = color_range[1], rasterized = rasterized, alpha = alpha, cmap = cmap_obj, norm = norm)
     if (plot_lims == None):
         ax.set_xlim(min(x),max(x))
         ax.set_ylim(min(y),max(y))
@@ -49,7 +107,7 @@ def plot_scatter(fig, ax, x, y, colors, color_range = "dynamic", marker='s', mar
         ax.set_ylim(*plot_lims[1])
     if (cbar_flag == True):
         cb = fig.colorbar(scatterplot)
-        cb.set_label(cbar_label, rotation=-90, labelpad = 15)
+        cb.set_label(cbar_label, rotation=90, labelpad = 15)
     return scatterplot
 
 def set_labels_title(ax, suptitle, x_ax_label, y_ax_label, tick_fs = 13, label_fs = 15, suptitle_fs = 15, y_sup = 0.95):
@@ -189,20 +247,20 @@ def plot_imshow(fig, ax, x, y, z, vrange = [None, None], interp_grid = True, cba
         cb.set_label(cbar_label, rotation=-90, labelpad = 15)
     return imshow
 
-def plot_pcolormesh(fig, ax, x, y, z, cmap = None, vrange = [None, None], interp_grid = True, cbar_flag = False, cbar_label = None):
+def plot_pcolormesh(fig, ax, x, y, z, cmap = None, vrange = [None, None], interp_grid = True, cbar_flag = False, cbar_label = None, num = 50, rasterized = False):
     if cmap == None:
         cmap_obj = mpl.cm.get_cmap("viridis")
     else:
         cmap_obj = mpl.cm.get_cmap(cmap)
     if (interp_grid == True):
-        xi = np.linspace(min(x), max(x))
-        yi = np.linspace(min(y), max(y))
+        xi = np.linspace(min(x), max(x), num = num)
+        yi = np.linspace(min(y), max(y), num = num)
         zi = mlab.griddata(x, y, z, xi, yi, interp='nn')
     else:
         xi = x
         yi = y
         zi = colors
-    pcol = ax.pcolormesh(xi,yi,zi, cmap = cmap_obj, vmin = vrange[0], vmax = vrange[1])
+    pcol = ax.pcolormesh(xi,yi,zi, cmap = cmap_obj, vmin = vrange[0], vmax = vrange[1], rasterized = rasterized)
     if (cbar_flag == True):
         cb = fig.colorbar(pcol)
         cb.set_label(cbar_label, rotation=-90, labelpad = 15)

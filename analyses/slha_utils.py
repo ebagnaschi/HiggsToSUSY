@@ -24,7 +24,7 @@ def load_data(data_file_list, data_description, decay_list = []):
     for idata in data_description:
         data_dict[idata[3]] = []
     for idecay in decay_list:
-        data_dict[idecay[3]] = []
+        data_dict[idecay[-1]] = []
     # Loop aver the files
     for file_counter, ifile in enumerate(data_file_list):
         if ((file_counter % 1000) == 0):
@@ -34,9 +34,11 @@ def load_data(data_file_list, data_description, decay_list = []):
         current_block = None
         decay_block_flg = False
         for idecay in decay_list:
-            decay_found_flag[idecay[3]] = False
+            decay_found_flag[idecay[-1]] = False
         for iline in filetext.splitlines():
             isplit = iline.split()
+            if isplit[0] == '#':
+                continue
             if ((isplit[0].lower() == "block") or (isplit[0].upper() == "DECAY")):
                 current_block = isplit[1]
                 current_block_data = isplit[2:]
@@ -61,21 +63,28 @@ def load_data(data_file_list, data_description, decay_list = []):
             if (decay_block_flg == True):
                 try:
                     # 2->2 decays, check the two decay products
-                    matched_decay = list(filter(lambda x: (x[1] == float(isplit[2]) and x[2] == float(isplit[3])),
-                                            decay_to_extract_list))
+                    if isplit[1] == "2":
+                        matched_decay = list(filter(lambda x: (x[1] == float(isplit[2]) and x[2] == float(isplit[3])),
+                                                    decay_to_extract_list))
+                    # 2->3 decays, check the two decay products
+                    elif isplit[1] == "3":
+                        matched_decay = list(filter(lambda x: (x[1] == float(isplit[2]) and x[2] == float(isplit[3]) and x[2] == float(isplit[3])),
+                                                    decay_to_extract_list))
+                    else:
+                        matched_decay = []
                 except ValueError:
                     pass
                 else:
                     if (len(matched_decay)>0):
  #                       print("matched decay", matched_decay)
  #                       print(isplit)
-                        # The BR is always the first entry
-                        data_dict[matched_decay[0][3]].append(float(isplit[0]))
-                        decay_found_flag[matched_decay[0][3]] = True
+                        # The BR is always the first entry; in the decay definition the last element of the list is the dictionary key to be used
+                        data_dict[matched_decay[0][-1]].append(float(isplit[0]))
+                        decay_found_flag[matched_decay[0][-1]] = True
         for idecay in decay_list:
-            if decay_found_flag[idecay[3]] == False:
+            if decay_found_flag[idecay[-1]] == False:
 #                print("BR {} set to zero".format(idecay))
-                data_dict[idecay[3]].append(0.)
+                data_dict[idecay[-1]].append(0.)
 #        sys.exit(0)
     print("Sanity check")
     nfiles = len(data_file_list)
